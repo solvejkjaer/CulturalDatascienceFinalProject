@@ -1,0 +1,89 @@
+---
+title: "Data cleaning"
+author: "Solvej Wilbrandt Kjær"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+I have downloaded all data files as .rds-files and saved them in a folder on my desktop called "results_1".
+
+```{r setup}
+# setting the results-folder as the root directory
+
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "/Users/Solvej/Desktop/results_1/")
+```
+
+
+```{r, warning = FALSE, message = FALSE}
+# loading libraries
+
+library(jsonlite)
+library(psychTestR)
+library(tidyverse)
+library(ggplot2)
+library(glue)
+library(data.table)
+library(lme4)
+library(readxl)
+library(tidyr)
+
+```
+
+```{r}
+## reading all the data files and creating one cleaned-up dataframe ##
+
+# getting a list of all the relevant files
+diag_name = "*.rds"
+diag_files = list.files(pattern = diag_name, recursive = TRUE)
+
+# creating a tibble
+c <-  tibble()
+for (name in diag_files) {
+  a1 <- as.data.frame(readRDS(name))
+  # parsing all the experimental data
+  b1 <- parse_json(a1$results.test)
+  c1 <- rbindlist(lapply(b1, function(x) if(is.null(x)) data.frame(rt = NA, response = NA) else x), fill = TRUE) %>% mutate(ID=substr(name, start=1, stop=nchar(name)-4))
+  # parsing the response to the gender question
+  b2 <- parse_json(a1$results.gender)
+  c2 <- rbindlist(lapply(b2, function(x) if(is.null(x)) data.frame(rt = NA, response = NA) else x), fill = TRUE)
+  # adding gender to the actual data
+  c1$gender <- str_trim(c2$response)
+  # parsing the response to the age and education questions
+  b3 <- parse_json(a1$results.demographics)
+  c3 <- rbindlist(lapply(b3, function(x) if(is.null(x)) data.frame(rt = NA, response = NA) else x), fill = TRUE)
+  # adding age to the actual data
+  c1$age <- as.numeric(gsub("[^0-9.,-]", "", c3$response[1])) # gsub is for removing if people added "år" to their age
+  # adding edu to the actual data
+  c1$edu <- c3$response[2]
+  # parsing the response to the native langauge question
+  b4 <- parse_json(a1$results.nativelang)
+  c4 <- rbindlist(lapply(b4, function(x) if(is.null(x)) data.frame(rt = NA, response = NA) else x), fill = TRUE)
+  c1$nat <- c4$response
+  # adding it *all* together over multiple runs...
+  c = bind_rows(c, c1)
+  for (row in length(c$response)) {
+    c$response[row]
+  }
+}
+
+# setting column names
+col_id = match(c("rt", "response", "math", "answer","sentence", "condition", "trial_type", "trial_index", "time_elapsed", "ID", "gender", "age", "edu", "nat"), colnames(c))
+d = c[, col_id]
+
+# unnesting the response-column
+d$response <- unlist(d$response)
+# making an index for every second response starting with the first - corresponding to all the math-responses
+idx <- seq(1,length(d$response),2)
+# creating a column full of NAs because for the correct-column we'll only be filling up half of them (namely those with math-responses)
+d$correct <- NA
+# comparing all the math-responses with the correct math-answers
+d$correct[idx] <- d$response[idx]==d$answer[idx]
+d$correct[idx+1] <- d$response[idx]==d$answer[idx]
+
+# taking out the responses based on incorrect math responses
+d_clean <- d[d$correct,]
+
+```
+
+I now have one cleaned up data frame called d_clean.
