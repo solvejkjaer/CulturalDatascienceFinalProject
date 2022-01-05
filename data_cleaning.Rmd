@@ -24,22 +24,20 @@ library(tidyverse)
 library(ggplot2)
 library(glue)
 library(data.table)
-library(lme4)
-library(readxl)
-library(tidyr)
-
 ```
 
 ```{r}
 ## reading all the data files and creating one cleaned-up dataframe ##
 
-# getting a list of all the relevant files
+# getting a list of all the .rds-files in the root directory
 diag_name = "*.rds"
 diag_files = list.files(pattern = diag_name, recursive = TRUE)
 
-# creating a tibble
+# creating an empty tibble
 c <-  tibble()
+# making a for-loop which reads all the .rds-files and creates one data frame
 for (name in diag_files) {
+  # reading the RDS-files
   a1 <- as.data.frame(readRDS(name))
   # parsing all the experimental data
   b1 <- parse_json(a1$results.test)
@@ -54,30 +52,31 @@ for (name in diag_files) {
   c3 <- rbindlist(lapply(b3, function(x) if(is.null(x)) data.frame(rt = NA, response = NA) else x), fill = TRUE)
   # adding age to the actual data
   c1$age <- as.numeric(gsub("[^0-9.,-]", "", c3$response[1])) # gsub is for removing if people added "år" to their age
-  # adding edu to the actual data
+  # adding education to the actual data
   c1$edu <- c3$response[2]
-  # parsing the response to the native langauge question
+  # parsing the response to the native language question
   b4 <- parse_json(a1$results.nativelang)
   c4 <- rbindlist(lapply(b4, function(x) if(is.null(x)) data.frame(rt = NA, response = NA) else x), fill = TRUE)
   c1$nat <- c4$response
-  # adding it *all* together over multiple runs...
+  # adding it all together over multiple runs
   c = bind_rows(c, c1)
   for (row in length(c$response)) {
     c$response[row]
   }
 }
 
-# setting column names
+# getting only the columns we are interested in
 col_id = match(c("rt", "response", "math", "answer","sentence", "condition", "trial_type", "trial_index", "time_elapsed", "ID", "gender", "age", "edu", "nat"), colnames(c))
 d = c[, col_id]
 
+## math responses
 # unnesting the response-column
 d$response <- unlist(d$response)
 # making an index for every second response starting with the first - corresponding to all the math-responses
 idx <- seq(1,length(d$response),2)
-# creating a column full of NAs because for the correct-column we'll only be filling up half of them (namely those with math-responses)
+# creating a correct-column full of NAs
 d$correct <- NA
-# comparing all the math-responses with the correct math-answers
+# comparing all the math responses with the correct answers and adding this to the correct-column
 d$correct[idx] <- d$response[idx]==d$answer[idx]
 d$correct[idx+1] <- d$response[idx]==d$answer[idx]
 
@@ -86,4 +85,4 @@ d_clean <- d[d$correct,]
 
 ```
 
-I now have one cleaned up data frame called d_clean.
+I now have one cleaned up tibble called d_clean.
